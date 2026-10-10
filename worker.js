@@ -653,7 +653,7 @@ async function sendRatesToTelegram(env) {
       `───────────────────\n\n` +
       `📋 <b>لیست قیمت صرافی‌ها:</b>\n\n` +
       exchangesListText +
-      `📢 @SarafiSanj`;
+      `🔰 @SarafiSanj`;
 
     const url = `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`;
     
