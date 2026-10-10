@@ -452,7 +452,7 @@ function compileFullExchangeList(liveResults, anchorPrice) {
 }
 
 /**
- * تابع ارسال خودکار نرخ‌ها به کانال تلگرام
+ * تابع ارسال خودکار نرخ‌ها به کانال تلگرام با قالب‌بندی HTML شکیل
  */
 async function sendRatesToTelegram(env) {
   if (!env.TELEGRAM_BOT_TOKEN || !env.TELEGRAM_CHANNEL_ID) {
@@ -472,19 +472,25 @@ async function sendRatesToTelegram(env) {
     const bestSell = [...active].filter(e => e.sellPrice > 0).sort((a, b) => a.sellPrice - b.sellPrice)[0];
     const avg = Math.round(active.reduce((acc, curr) => acc + curr.buyPrice, 0) / active.length);
 
+    // چیدمان تمیز لیست صرافی‌ها
     let exchangesListText = '';
     allExchanges.forEach(ex => {
       const buyStr = ex.buyPrice ? ex.buyPrice.toLocaleString('fa-IR') : '---';
       const sellStr = ex.sellPrice ? ex.sellPrice.toLocaleString('fa-IR') : '---';
-      exchangesListText += `- ${ex.name} | خرید: ${buyStr} | فروش: ${sellStr}\n`;
+      exchangesListText += `▫️ <b>${ex.name}</b>\n    خرید از شما: ${buyStr} | فروش به شما: ${sellStr}\n\n`;
     });
 
-    const message = `نرخ لحظه‌ای تتر (USDT)\n\n` +
-      `خرید از شما (${bestBuy.name}): ${bestBuy.buyPrice.toLocaleString('fa-IR')}\n` +
-      `فروش به شما (${bestSell.name}): ${bestSell.sellPrice.toLocaleString('fa-IR')}\n` +
-      `میانگین بازار: ${avg.toLocaleString('fa-IR')} تومان\n\n` +
-      `-----------------------------------\n` +
-      `لیست نرخ صرافی‌ها:\n\n` +
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString('fa-IR', { timeZone: 'Asia/Tehran', hour: '2-digit', minute: '2-digit' });
+
+    const message = `📊 <b>نرخ لحظه‌ای تتر (USDT) - ${timeStr}</b>\n\n` +
+      `🟢 <b>بهترین صرافی برای فروش تتر شما:</b>\n` +
+      `👈 <b>${bestBuy.name}</b> با نرخ <b>${bestBuy.buyPrice.toLocaleString('fa-IR')}</b> تومان\n\n` +
+      `🔵 <b>بهترین صرافی برای خرید تتر شما:</b>\n` +
+      `👈 <b>${bestSell.name}</b> با نرخ <b>${bestSell.sellPrice.toLocaleString('fa-IR')}</b> تومان\n\n` +
+      `📈 <b>میانگین قیمت بازار:</b> ${avg.toLocaleString('fa-IR')} تومان\n` +
+      `───────────────────\n\n` +
+      `📋 <b>لیست قیمت صرافی‌ها:</b>\n\n` +
       exchangesListText;
 
     const url = `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`;
@@ -494,7 +500,8 @@ async function sendRatesToTelegram(env) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         chat_id: env.TELEGRAM_CHANNEL_ID,
-        text: message
+        text: message,
+        parse_mode: 'HTML'
       })
     });
 
