@@ -452,7 +452,7 @@ function compileFullExchangeList(liveResults, anchorPrice) {
 }
 
 /**
- * تابع ارسال خودکار نرخ‌ها به کانال تلگرام با قالب‌بندی HTML شکیل
+ * تابع ارسال خودکار نرخ‌ها به کانال تلگرام با عبارات بی‌طرفانه و لینک کانال
  */
 async function sendRatesToTelegram(env) {
   if (!env.TELEGRAM_BOT_TOKEN || !env.TELEGRAM_CHANNEL_ID) {
@@ -472,7 +472,6 @@ async function sendRatesToTelegram(env) {
     const bestSell = [...active].filter(e => e.sellPrice > 0).sort((a, b) => a.sellPrice - b.sellPrice)[0];
     const avg = Math.round(active.reduce((acc, curr) => acc + curr.buyPrice, 0) / active.length);
 
-    // چیدمان تمیز لیست صرافی‌ها
     let exchangesListText = '';
     allExchanges.forEach(ex => {
       const buyStr = ex.buyPrice ? ex.buyPrice.toLocaleString('fa-IR') : '---';
@@ -484,14 +483,15 @@ async function sendRatesToTelegram(env) {
     const timeStr = now.toLocaleTimeString('fa-IR', { timeZone: 'Asia/Tehran', hour: '2-digit', minute: '2-digit' });
 
     const message = `📊 <b>نرخ لحظه‌ای تتر (USDT) - ${timeStr}</b>\n\n` +
-      `🟢 <b>بهترین صرافی برای فروش تتر شما:</b>\n` +
+      `🟢 <b>بالاترین پیشنهاد خرید (خرید صرافی از شما):</b>\n` +
       `👈 <b>${bestBuy.name}</b> با نرخ <b>${bestBuy.buyPrice.toLocaleString('fa-IR')}</b> تومان\n\n` +
-      `🔵 <b>بهترین صرافی برای خرید تتر شما:</b>\n` +
+      `🔵 <b>پایین‌ترین پیشنهاد فروش (فروش صرافی به شما):</b>\n` +
       `👈 <b>${bestSell.name}</b> با نرخ <b>${bestSell.sellPrice.toLocaleString('fa-IR')}</b> تومان\n\n` +
       `📈 <b>میانگین قیمت بازار:</b> ${avg.toLocaleString('fa-IR')} تومان\n` +
       `───────────────────\n\n` +
       `📋 <b>لیست قیمت صرافی‌ها:</b>\n\n` +
-      exchangesListText;
+      exchangesListText +
+      `📢 @SarafiSanj`;
 
     const url = `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`;
     
