@@ -456,7 +456,7 @@ function compileFullExchangeList(liveResults, anchorPrice) {
  */
 async function sendRatesToTelegram(env) {
   if (!env.TELEGRAM_BOT_TOKEN || !env.TELEGRAM_CHANNEL_ID) {
-    return { ok: false, error: "متغیرهای TELEGRAM_BOT_TOKEN یا TELEGRAM_CHANNEL_ID در کلودفلر ست نشده‌اند." };
+    return { ok: false, error: "متغیرهای محیطی ست نشده‌اند." };
   }
 
   try {
@@ -472,13 +472,22 @@ async function sendRatesToTelegram(env) {
     const bestSell = [...active].filter(e => e.sellPrice > 0).sort((a, b) => a.sellPrice - b.sellPrice)[0];
     const avg = Math.round(active.reduce((acc, curr) => acc + curr.buyPrice, 0) / active.length);
 
-    const message = `📊 *نرخ لحظه‌ای تتر (USDT)*\n\n` +
-      `🟢 *بالاترین نرخ خرید (فروش به صرافی):*\n` +
-      `🔹 ${bestBuy.name}: \`${bestBuy.buyPrice.toLocaleString('fa-IR')} تومان\`\n\n` +
-      `🔵 *کمترین نرخ فروش (خرید از صرافی):*\n` +
-      `🔹 ${bestSell.name}: \`${bestSell.sellPrice.toLocaleString('fa-IR')} تومان\`\n\n` +
-      `📈 میانگین بازار: \`${avg.toLocaleString('fa-IR')} تومان\`\n\n` +
-      `🌐 مشاهده جدول کامل:\nhttps://sarafisanj.bardiasobhani28.workers.dev`;
+    // ساخت لیست تمام صرافی‌ها پشت سر هم
+    let exchangesListText = '';
+    allExchanges.forEach(ex => {
+      const buyStr = ex.buyPrice ? `${ex.buyPrice.toLocaleString('fa-IR')}` : 'نامشخص';
+      const sellStr = ex.sellPrice ? `${ex.sellPrice.toLocaleString('fa-IR')}` : 'نامشخص';
+      exchangesListText += `▪️ *${ex.name}*:\n   خرید: \`${buyStr}\` | فروش: \`${sellStr}\`\n`;
+    });
+
+    const message = `📊 *نرخ لحظه‌ای تتر (USDT) - بازار ایران*\n\n` +
+      `🟢 *بالاترین خرید:* ${bestBuy.name} (\`${bestBuy.buyPrice.toLocaleString('fa-IR')}\`)\n` +
+      `🔵 *کمترین فروش:* ${bestSell.name} (\`${bestSell.sellPrice.toLocaleString('fa-IR')}\`)\n` +
+      `📈 *میانگین بازار:* \`${avg.toLocaleString('fa-IR')} تومان\`\n\n` +
+      `──────────────\n` +
+      `📋 *نرخ تفکیکی تمام صرافی‌ها:*\n\n` +
+      exchangesListText + `\n` +
+      `🌐 مشاهده جدول کامل و زنده:\nhttps://sarafisanj.bardiasobhani28.workers.dev`;
 
     const url = `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`;
     
