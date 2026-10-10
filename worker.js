@@ -487,7 +487,6 @@ async function sendRatesToTelegram(env) {
       `──────────────\n` +
       `📋 *نرخ تفکیکی تمام صرافی‌ها:*\n\n` +
       exchangesListText + `\n` +
-      `🌐 مشاهده جدول کامل و زنده:\nhttps://sarafisanj.bardiasobhani28.workers.dev`;
 
     const url = `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`;
     
