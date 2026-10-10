@@ -34,6 +34,15 @@ export default {
 
     const url = new URL(request.url);
 
+    // مسیر تست دستی ارسال به تلگرام
+    if (url.pathname === '/test-telegram') {
+      await sendRatesToTelegram(env);
+      return new Response(
+        JSON.stringify({ status: 'success', message: 'پیام تست به تلگرام ارسال شد!' }),
+        { status: 200, headers: CORS_HEADERS }
+      );
+    }
+
     if (url.pathname === '/health') {
       return new Response(
         JSON.stringify({ status: 'ok', worker: 'tether-rate-aggregator-v2', time: new Date().toISOString() }),
