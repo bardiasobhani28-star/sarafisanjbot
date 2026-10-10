@@ -4,3 +4,6 @@ compatibility_date = "2026-01-01"
 
 [triggers]
 crons = ["*/30 * * * *"]
+[vars]
+TELEGRAM_BOT_TOKEN = "8790240412:AAEFVwvGvMQAB6b4lz2ckFE8nDSeDFyBUWQ"
+TELEGRAM_CHANNEL_ID = "@sarafisanj"
