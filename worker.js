@@ -75,7 +75,6 @@ export default {
     // ۲. دریافت زنده نرخ‌ها از صرافی‌های فعال
     const rawResults = await fetchLiveExchanges();
 
-    // محاسبه نرخ مبنای زنده از میانگین صرافی‌های آنلاین
     const validLivePrices = rawResults
       .filter(r => r.status === 'online' && r.buyPrice > 100000)
       .map(r => r.buyPrice);
@@ -84,10 +83,8 @@ export default {
       ? Math.round(validLivePrices.reduce((a, b) => a + b, 0) / validLivePrices.length)
       : CONFIG.ANCHOR_FALLBACK_PRICE;
 
-    // تکمیل داده‌های صرافی‌های تکمیلی بر مبنای نرخ واقعی بازار
     const allExchanges = compileFullExchangeList(rawResults, liveAnchorPrice);
 
-    // مشخص کردن بالاترین قیمت خرید و کمترین قیمت فروش
     const active = allExchanges.filter(e => e.buyPrice > 0);
     const bestBuy = active.length > 0 ? [...active].sort((a, b) => b.buyPrice - a.buyPrice)[0] : null;
     const bestSell = active.length > 0 ? [...active].filter(e => e.sellPrice > 0).sort((a, b) => a.sellPrice - b.sellPrice)[0] : null;
@@ -145,9 +142,6 @@ export default {
   }
 };
 
-/**
- * دریافت همزمان نرخ از صرافی‌های دارای API عمومی[cite: 6]
- */
 async function fetchLiveExchanges() {
   const tasks = [
     fetchNobitex(),
@@ -197,7 +191,6 @@ async function fetchWithTimeout(url, options = {}, timeout = CONFIG.FETCH_TIMEOU
   }
 }
 
-// ۱. نوبیتکس (Nobitex)[cite: 6]
 async function fetchNobitex() {
   try {
     const res = await fetchWithTimeout('https://apiv2.nobitex.ir/market/stats');
@@ -224,7 +217,6 @@ async function fetchNobitex() {
   return null;
 }
 
-// ۲. والکس (Wallex)[cite: 6]
 async function fetchWallex() {
   try {
     const res = await fetchWithTimeout('https://api.wallex.ir/v1/depth?symbol=USDTTMN');
@@ -250,7 +242,6 @@ async function fetchWallex() {
   return null;
 }
 
-// ۳. او ام پی فینکس (OMPfinex)[cite: 6]
 async function fetchOmpfinex() {
   try {
     const res = await fetchWithTimeout('https://api.ompfinex.com/v1/orderbook?id=9');
@@ -283,7 +274,6 @@ async function fetchOmpfinex() {
   return null;
 }
 
-// ۴. تترلند (Tetherland)[cite: 6]
 async function fetchTetherland() {
   try {
     const res = await fetchWithTimeout('https://api.tetherland.com/currencies');
@@ -313,7 +303,6 @@ async function fetchTetherland() {
   return null;
 }
 
-// ۵. تبدیل (Tabdeal)[cite: 6]
 async function fetchTabdeal() {
   try {
     const res = await fetchWithTimeout('https://api.tabdeal.org/r/plots/currency_prices', { redirect: 'follow' });
@@ -348,7 +337,6 @@ async function fetchTabdeal() {
   return null;
 }
 
-// ۶. رمزینکس (Ramzinex)[cite: 6]
 async function fetchRamzinex() {
   try {
     const res = await fetchWithTimeout('https://publicapi.ramzinex.com/exchange/api/v1.0/exchange/pairs/11');
@@ -378,7 +366,6 @@ async function fetchRamzinex() {
   return null;
 }
 
-// ۷. بیت‌پین (Bitpin)[cite: 6]
 async function fetchBitpin() {
   try {
     const res = await fetchWithTimeout('https://api.bitpin.ir/v1/mkt/markets/');
@@ -408,7 +395,6 @@ async function fetchBitpin() {
   return null;
 }
 
-// ۸. اکسیر (Exir)[cite: 6]
 async function fetchExir() {
   try {
     const res = await fetchWithTimeout('https://api.exir.io/v2/orderbook?symbol=usdt-irt');
@@ -439,7 +425,6 @@ async function fetchExir() {
   return null;
 }
 
-// ۹. سرمایکس (Sarmayex)[cite: 6]
 async function fetchSarmayex() {
   try {
     const res = await fetchWithTimeout('https://api.sarmayex.com/api/v1/public/currencies');
@@ -470,7 +455,6 @@ async function fetchSarmayex() {
   return null;
 }
 
-// ۱۰. توکن‌باز (Tokenbaz.com)[cite: 6]
 async function fetchTokenbaz() {
   try {
     const res = await fetchWithTimeout('https://tokenbaz.com/coins/tether', {
@@ -556,9 +540,6 @@ async function fetchTokenbaz() {
   return [];
 }
 
-/**
- * تجمیع فهرست کامل صرافی‌های معتبر بازار ایران[cite: 6]
- */
 function compileFullExchangeList(liveResults, anchorPrice) {
   const liveMap = new Map();
   liveResults.forEach(item => {
@@ -621,7 +602,7 @@ function compileFullExchangeList(liveResults, anchorPrice) {
 }
 
 /**
- * تابع ارسال خودکار نرخ‌ها به کانال تلگرام با قالب HTML و عبارات بی‌طرفانه
+ * تابع ارسال خودکار نرخ‌ها به کانال تلگرام با تاریخ خورشیدی و قالب HTML
  */
 async function sendRatesToTelegram(env) {
   if (!env.TELEGRAM_BOT_TOKEN || !env.TELEGRAM_CHANNEL_ID) {
@@ -631,8 +612,8 @@ async function sendRatesToTelegram(env) {
   try {
     const rawResults = await fetchLiveExchanges();
     const validLivePrices = rawResults.filter(r => r.status === 'online' && r.buyPrice > 100000).map(r => r.buyPrice);
-    const liveAnchorPrice = validLivePrices.length > 0 ? Math.round(validLivePrices.reduce((a, b) => a + b, 0) / validLivePrices.length) : CONFIG.ANCHOR_FALLBACK_PRICE;
-    const allExchanges = compileFullExchangeList(rawResults, liveAnchorPrice);
+    const liveAnchorProfile = validLivePrices.length > 0 ? Math.round(validLivePrices.reduce((a, b) => a + b, 0) / validLivePrices.length) : CONFIG.ANCHOR_FALLBACK_PRICE;
+    const allExchanges = compileFullExchangeList(rawResults, liveAnchorProfile);
 
     const active = allExchanges.filter(e => e.buyPrice > 0);
     if (!active.length) return { ok: false, error: "هیچ قیمتی دریافت نشد." };
@@ -648,10 +629,22 @@ async function sendRatesToTelegram(env) {
       exchangesListText += `▫️ <b>${ex.name}</b>\n    خرید از شما: ${buyStr} | فروش به شما: ${sellStr}\n\n`;
     });
 
+    // دریافت تاریخ و ساعت به صورت شمسی (خورشیدی)
     const now = new Date();
-    const timeStr = now.toLocaleTimeString('fa-IR', { timeZone: 'Asia/Tehran', hour: '2-digit', minute: '2-digit' });
+    const dateStr = now.toLocaleDateString('fa-IR-u-ca-persian', {
+      timeZone: 'Asia/Tehran',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+    const timeStr = now.toLocaleTimeString('fa-IR', {
+      timeZone: 'Asia/Tehran',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
 
-    const message = `📊 <b>نرخ لحظه‌ای تتر (USDT) - ${timeStr}</b>\n\n` +
+    const message = `📊 <b>نرخ لحظه‌ای تتر (USDT)</b>\n` +
+      `📅 <b>تاریخ:</b> ${dateStr} | <b>ساعت:</b> ${timeStr}\n\n` +
       `🟢 <b>بالاترین پیشنهاد خرید (خرید صرافی از شما):</b>\n` +
       `👈 <b>${bestBuy.name}</b> با نرخ <b>${bestBuy.buyPrice.toLocaleString('fa-IR')}</b> تومان\n\n` +
       `🔵 <b>پایین‌ترین پیشنهاد فروش (فروش صرافی به شما):</b>\n` +
@@ -660,7 +653,7 @@ async function sendRatesToTelegram(env) {
       `───────────────────\n\n` +
       `📋 <b>لیست قیمت صرافی‌ها:</b>\n\n` +
       exchangesListText +
-      `🔰 @SarafiSanj`;
+      `📢 @SarafiSanj`;
 
     const url = `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`;
     
