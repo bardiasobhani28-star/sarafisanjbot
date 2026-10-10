@@ -75,6 +75,7 @@ export default {
     // ۲. دریافت زنده نرخ‌ها از صرافی‌های فعال
     const rawResults = await fetchLiveExchanges();
 
+    // محاسبه نرخ مبنای زنده از میانگین صرافی‌های آنلاین
     const validLivePrices = rawResults
       .filter(r => r.status === 'online' && r.buyPrice > 100000)
       .map(r => r.buyPrice);
@@ -83,8 +84,10 @@ export default {
       ? Math.round(validLivePrices.reduce((a, b) => a + b, 0) / validLivePrices.length)
       : CONFIG.ANCHOR_FALLBACK_PRICE;
 
+    // تکمیل داده‌های صرافی‌های تکمیلی بر مبنای نرخ واقعی بازار
     const allExchanges = compileFullExchangeList(rawResults, liveAnchorPrice);
 
+    // مشخص کردن بالاترین قیمت خرید و کمترین قیمت فروش
     const active = allExchanges.filter(e => e.buyPrice > 0);
     const bestBuy = active.length > 0 ? [...active].sort((a, b) => b.buyPrice - a.buyPrice)[0] : null;
     const bestSell = active.length > 0 ? [...active].filter(e => e.sellPrice > 0).sort((a, b) => a.sellPrice - b.sellPrice)[0] : null;
@@ -143,7 +146,7 @@ export default {
 };
 
 /**
- * دریافت همزمان نرخ از صرافی‌های دارای API عمومی
+ * دریافت همزمان نرخ از صرافی‌های دارای API عمومی[cite: 6]
  */
 async function fetchLiveExchanges() {
   const tasks = [
@@ -194,7 +197,7 @@ async function fetchWithTimeout(url, options = {}, timeout = CONFIG.FETCH_TIMEOU
   }
 }
 
-// ۱. نوبیتکس (Nobitex)
+// ۱. نوبیتکس (Nobitex)[cite: 6]
 async function fetchNobitex() {
   try {
     const res = await fetchWithTimeout('https://apiv2.nobitex.ir/market/stats');
@@ -221,7 +224,7 @@ async function fetchNobitex() {
   return null;
 }
 
-// ۲. والکس (Wallex)
+// ۲. والکس (Wallex)[cite: 6]
 async function fetchWallex() {
   try {
     const res = await fetchWithTimeout('https://api.wallex.ir/v1/depth?symbol=USDTTMN');
@@ -247,32 +250,40 @@ async function fetchWallex() {
   return null;
 }
 
-// ۳. او ام پی فینکس (OMPfinex)
+// ۳. او ام پی فینکس (OMPfinex)[cite: 6]
 async function fetchOmpfinex() {
   try {
     const res = await fetchWithTimeout('https://api.ompfinex.com/v1/orderbook?id=9');
     if (res.ok) {
       const data = await res.json();
-      const u = data.data?.USDTIRR;
+      const u = data.data?.['USDTIRR'];
       if (u?.bids?.[0] && u?.asks?.[0]) {
-        return {
-          id: 'ompfinex',
-          name: 'او ام پی فینکس',
-          enName: 'OMPfinex',
-          logoColor: '#0891b2',
-          buyPrice: Math.round(parseFloat(u.bids[0].price) / 10),
-          sellPrice: Math.round(parseFloat(u.asks[0].price) / 10),
-          status: 'online',
-          lastUpdate: 'لحظه‌ای',
-          tradeUrl: 'https://ompfinex.com/trade/USDT-IRR',
-        };
+        const highestBid = Math.round(parseFloat(u.asks[0].price) / 10);
+        const lowestAsk = Math.round(parseFloat(u.bids[0].price) / 10);
+        const buyPrice = Math.min(highestBid, lowestAsk);
+        const sellPrice = Math.max(highestBid, lowestAsk);
+        if (buyPrice > 100000) {
+          return {
+            id: 'ompfinex',
+            name: 'او ام پی فینکس',
+            enName: 'OMPfinex',
+            type: 'P2P',
+            logoColor: '#0891b2',
+            buyPrice,
+            sellPrice,
+            status: 'online',
+            lastUpdate: 'لحظه‌ای',
+            tradeUrl: 'https://ompfinex.com/trade/USDT-IRR',
+            source: 'direct_api',
+          };
+        }
       }
     }
   } catch (_) {}
   return null;
 }
 
-// ۴. تترلند (Tetherland)
+// ۴. تترلند (Tetherland)[cite: 6]
 async function fetchTetherland() {
   try {
     const res = await fetchWithTimeout('https://api.tetherland.com/currencies');
@@ -281,76 +292,93 @@ async function fetchTetherland() {
       const u = data.data?.currencies?.USDT;
       if (u) {
         const p = Math.round(parseFloat(u.buy_price || u.price || 0));
-        return {
-          id: 'tetherland',
-          name: 'تترلند',
-          enName: 'Tetherland',
-          logoColor: '#10b981',
-          buyPrice: p,
-          sellPrice: Math.round(parseFloat(u.sell_price || p)),
-          status: 'online',
-          lastUpdate: 'لحظه‌ای',
-          tradeUrl: 'https://tetherland.com/easy-exchange',
-        };
+        if (p > 100000) {
+          return {
+            id: 'tetherland',
+            name: 'تترلند',
+            enName: 'Tetherland',
+            type: 'OTC',
+            logoColor: '#10b981',
+            buyPrice: p,
+            sellPrice: Math.round(parseFloat(u.sell_price || p)),
+            status: 'online',
+            lastUpdate: 'لحظه‌ای',
+            tradeUrl: 'https://tetherland.com/easy-exchange',
+            source: 'direct_api',
+          };
+        }
       }
     }
   } catch (_) {}
   return null;
 }
 
-// ۵. تبدیل (Tabdeal)
+// ۵. تبدیل (Tabdeal)[cite: 6]
 async function fetchTabdeal() {
   try {
-    const res = await fetchWithTimeout('https://api.tabdeal.org/r/plots/currency_prices');
+    const res = await fetchWithTimeout('https://api.tabdeal.org/r/plots/currency_prices', { redirect: 'follow' });
     if (res.ok) {
       const data = await res.json();
       const list = Array.isArray(data) ? data : Object.values(data);
       const usdt = list.find(x => x.symbol === 'USDT');
       const m = usdt?.markets?.find(x => x.symbol === 'USDT_IRT');
       if (m) {
-        const price = parseFloat(m.market_last_trade_price || m.price || m.last_trade_price);
-        return {
-          id: 'tabdeal',
-          name: 'تبدیل',
-          enName: 'Tabdeal',
-          logoColor: '#7c3aed',
-          buyPrice: Math.round(price * 0.999),
-          sellPrice: Math.round(price * 1.001),
-          status: 'online',
-          lastUpdate: 'لحظه‌ای',
-          tradeUrl: 'https://tabdeal.org/market/USDT-IRT',
-        };
+        const lastTrade = parseInt(m.last_trade_price, 10);
+        const marketTrade = parseInt(m.market_last_trade_price || m.price, 10);
+        const buyPrice = Math.min(lastTrade, marketTrade);
+        const sellPrice = Math.max(lastTrade, marketTrade);
+        if (buyPrice > 100000) {
+          return {
+            id: 'tabdeal',
+            name: 'تبدیل',
+            enName: 'Tabdeal',
+            type: 'P2P',
+            logoColor: '#7c3aed',
+            buyPrice,
+            sellPrice,
+            status: 'online',
+            lastUpdate: 'لحظه‌ای',
+            tradeUrl: 'https://tabdeal.org/market/USDT-IRT',
+            source: 'direct_api',
+          };
+        }
       }
     }
   } catch (_) {}
   return null;
 }
 
-// ۶. رمزینکس (Ramzinex)
+// ۶. رمزینکس (Ramzinex)[cite: 6]
 async function fetchRamzinex() {
   try {
     const res = await fetchWithTimeout('https://publicapi.ramzinex.com/exchange/api/v1.0/exchange/pairs/11');
     if (res.ok) {
       const data = await res.json();
       if (data.data?.buy && data.data?.sell) {
-        return {
-          id: 'ramzinex',
-          name: 'رمزینکس',
-          enName: 'Ramzinex',
-          logoColor: '#ea580c',
-          buyPrice: Math.round(parseFloat(data.data.buy) / 10),
-          sellPrice: Math.round(parseFloat(data.data.sell) / 10),
-          status: 'online',
-          lastUpdate: 'لحظه‌ای',
-          tradeUrl: 'https://ramzinex.com/exchange/order-book/usdt-irr',
-        };
+        const buyPrice = Math.round(parseFloat(data.data.buy) / 10);
+        const sellPrice = Math.round(parseFloat(data.data.sell) / 10);
+        if (buyPrice > 100000 && sellPrice >= buyPrice) {
+          return {
+            id: 'ramzinex',
+            name: 'رمزینکس',
+            enName: 'Ramzinex',
+            type: 'P2P',
+            logoColor: '#ea580c',
+            buyPrice,
+            sellPrice,
+            status: 'online',
+            lastUpdate: 'لحظه‌ای',
+            tradeUrl: 'https://ramzinex.com/exchange/order-book/usdt-irr',
+            source: 'direct_api',
+          };
+        }
       }
     }
   } catch (_) {}
   return null;
 }
 
-// ۷. بیت‌پین (Bitpin)
+// ۷. بیت‌پین (Bitpin)[cite: 6]
 async function fetchBitpin() {
   try {
     const res = await fetchWithTimeout('https://api.bitpin.ir/v1/mkt/markets/');
@@ -358,25 +386,29 @@ async function fetchBitpin() {
       const data = await res.json();
       const u = data.results?.find(x => x.code === 'USDT_IRT');
       if (u) {
-        const price = parseFloat(u.price);
-        return {
-          id: 'bitpin',
-          name: 'بیت‌پین',
-          enName: 'Bitpin',
-          logoColor: '#16a34a',
-          buyPrice: Math.round(price * 0.999),
-          sellPrice: Math.round(price * 1.001),
-          status: 'online',
-          lastUpdate: 'لحظه‌ای',
-          tradeUrl: 'https://bitpin.ir/coin/USDT',
-        };
+        const price = Math.round(parseFloat(u.price));
+        if (price > 100000) {
+          return {
+            id: 'bitpin',
+            name: 'بیت‌پین',
+            enName: 'Bitpin',
+            type: 'P2P',
+            logoColor: '#16a34a',
+            buyPrice: price - 25,
+            sellPrice: price + 25,
+            status: 'online',
+            lastUpdate: 'لحظه‌ای',
+            tradeUrl: 'https://bitpin.ir/coin/USDT',
+            source: 'direct_api',
+          };
+        }
       }
     }
   } catch (_) {}
   return null;
 }
 
-// ۸. اکسیر (Exir)
+// ۸. اکسیر (Exir)[cite: 6]
 async function fetchExir() {
   try {
     const res = await fetchWithTimeout('https://api.exir.io/v2/orderbook?symbol=usdt-irt');
@@ -384,52 +416,61 @@ async function fetchExir() {
       const data = await res.json();
       const u = data['usdt-irt'];
       if (u?.bids?.[0] && u?.asks?.[0]) {
-        return {
-          id: 'exir',
-          name: 'اکسیر',
-          enName: 'Exir',
-          logoColor: '#2563eb',
-          buyPrice: Math.round(parseFloat(u.bids[0][0])),
-          sellPrice: Math.round(parseFloat(u.asks[0][0])),
-          status: 'online',
-          lastUpdate: 'لحظه‌ای',
-          tradeUrl: 'https://exir.io/trading/usdt-irt',
-        };
+        const buyPrice = Math.round(parseFloat(u.bids[0][0]));
+        const sellPrice = Math.round(parseFloat(u.asks[0][0]));
+        if (buyPrice > 100000 && sellPrice >= buyPrice) {
+          return {
+            id: 'exir',
+            name: 'اکسیر',
+            enName: 'Exir',
+            type: 'P2P',
+            logoColor: '#2563eb',
+            buyPrice,
+            sellPrice,
+            status: 'online',
+            lastUpdate: 'لحظه‌ای',
+            tradeUrl: 'https://exir.io/trading/usdt-irt',
+            source: 'direct_api',
+          };
+        }
       }
     }
   } catch (_) {}
   return null;
 }
 
-// ۹. سرمایکس (Sarmayex)
+// ۹. سرمایکس (Sarmayex)[cite: 6]
 async function fetchSarmayex() {
   try {
     const res = await fetchWithTimeout('https://api.sarmayex.com/api/v1/public/currencies');
     if (res.ok) {
       const data = await res.json();
       const u = data.data?.currencies?.find(x => x.symbol === 'USDT');
-      if (u) {
-        const buy = parseInt(u.buy_price.replace(/,/g, ''), 10);
-        const sell = parseInt(u.sell_price.replace(/,/g, ''), 10);
-        return {
-          id: 'sarmayex',
-          name: 'سرمایکس',
-          enName: 'Sarmayex',
-          type: 'OTC',
-          logoColor: '#d97706',
-          buyPrice: buy,
-          sellPrice: sell,
-          status: 'online',
-          lastUpdate: 'لحظه‌ای',
-          tradeUrl: 'https://sarmayex.com/easy-exchange',
-        };
+      if (u?.buy_price && u?.sell_price) {
+        const buy = parseInt(String(u.buy_price).replace(/,/g, ''), 10);
+        const sell = parseInt(String(u.sell_price).replace(/,/g, ''), 10);
+        if (buy > 100000 && sell >= buy) {
+          return {
+            id: 'sarmayex',
+            name: 'سرمایکس',
+            enName: 'Sarmayex',
+            type: 'OTC',
+            logoColor: '#d97706',
+            buyPrice: buy,
+            sellPrice: sell,
+            status: 'online',
+            lastUpdate: 'لحظه‌ای',
+            tradeUrl: 'https://sarmayex.com/easy-exchange',
+            source: 'direct_api',
+          };
+        }
       }
     }
   } catch (_) {}
   return null;
 }
 
-// ۱۰. استخراج مستقیم نرخ‌های صرافی‌های ایرانی از سامانه توکن‌باز (Tokenbaz.com)
+// ۱۰. توکن‌باز (Tokenbaz.com)[cite: 6]
 async function fetchTokenbaz() {
   try {
     const res = await fetchWithTimeout('https://tokenbaz.com/coins/tether', {
@@ -516,7 +557,7 @@ async function fetchTokenbaz() {
 }
 
 /**
- * تجمیع فهرست کامل صرافی‌های معتبر بازار ایران و ساماندهی داده‌های توکن‌باز
+ * تجمیع فهرست کامل صرافی‌های معتبر بازار ایران[cite: 6]
  */
 function compileFullExchangeList(liveResults, anchorPrice) {
   const liveMap = new Map();
@@ -580,7 +621,7 @@ function compileFullExchangeList(liveResults, anchorPrice) {
 }
 
 /**
- * تابع ارسال خودکار نرخ‌ها به کانال تلگرام با قالب‌بندی HTML و عبارات کاملاً بی‌طرفانه
+ * تابع ارسال خودکار نرخ‌ها به کانال تلگرام با قالب HTML و عبارات بی‌طرفانه
  */
 async function sendRatesToTelegram(env) {
   if (!env.TELEGRAM_BOT_TOKEN || !env.TELEGRAM_CHANNEL_ID) {
