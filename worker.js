@@ -1,38 +1,14 @@
 /**
  * ============================================================================
- * Cloudflare Worker: Tether (USDT/IRT) Iranian Exchanges Aggregator & CORS Proxy
- * ============================================================================
- * 
- * ویژگی‌ها:
- * ۱. دریافت همزمان نرخ خرید و فروش تتر از ۱۵ صرافی معتبر و بزرگ ایرانی:
- *    - نوبیتکس (Nobitex)
- *    - والکس (Wallex)
- *    - او ام پی فینکس (OMPfinex)
- *    - تترلند (Tetherland)
- *    - تبدیل (Tabdeal)
- *    - رمزینکس (Ramzinex)
- *    - بیت‌پین (Bitpin)
- *    - اکسیر (Exir)
- *    - سرمایکس (Sarmayex)
- *    - آبان‌تتر (Aban Tether)
- *    - بیت ۲۴ (Bit24)
- *    - ارزپایا (ArzPaya)
- *    - ارزینجا (Arzinja)
- *    - راستین (Raastin)
- *    - رابکس (Rabex)
- * 
- * ۲. استفاده از Cloudflare Cache API برای کش کردن پاسخ‌ها به مدت ۶۰ ثانیه (۱ دقیقه)
- * ۳. اتصال به اندپوینت‌های کاملاً تایید شده و لحظه‌ای صرافی‌ها
- * ۴. مدیریت خطای عالی با Promise.allSettled و تایم‌اوت مجزا برای هر درخواست
- * ۵. پشتیبانی کامل از CORS برای اتصال مستقیم از Cloudflare Pages یا هر دامنه دیگر
+ * Cloudflare Worker: Tether (USDT/IRT) Iranian Exchanges Aggregator & Telegram Bot
  * ============================================================================
  */
 
 const CONFIG = {
-  CACHE_TTL_SECONDS: 60, // مدت زمان کش در سرورهای اج کلودفلر (۱ دقیقه)
-  FETCH_TIMEOUT_MS: 3200, // حداکثر زمان انتظار برای پاسخ هر صرافی (میلی‌ثانیه)
+  CACHE_TTL_SECONDS: 60,
+  FETCH_TIMEOUT_MS: 3200,
   USER_AGENT: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-  ANCHOR_FALLBACK_PRICE: 267000, // نرخ لنگر در صورت قطعی همگانی اینترنت بین‌الملل
+  ANCHOR_FALLBACK_PRICE: 267000,
 };
 
 const CORS_HEADERS = {
@@ -57,6 +33,15 @@ export default {
     }
 
     const url = new URL(request.url);
+
+    // مسیر تست دستی تلگرام
+    if (url.pathname === '/test-telegram') {
+      const telegramResult = await sendRatesToTelegram(env);
+      return new Response(
+        JSON.stringify({ status: 'tested', telegramResponse: telegramResult }),
+        { status: 200, headers: CORS_HEADERS }
+      );
+    }
 
     if (url.pathname === '/health') {
       return new Response(
@@ -90,7 +75,6 @@ export default {
     // ۲. دریافت زنده نرخ‌ها از صرافی‌های فعال
     const rawResults = await fetchLiveExchanges();
 
-    // محاسبه نرخ مبنای زنده از میانگین صرافی‌های آنلاین
     const validLivePrices = rawResults
       .filter(r => r.status === 'online' && r.buyPrice > 100000)
       .map(r => r.buyPrice);
@@ -99,10 +83,8 @@ export default {
       ? Math.round(validLivePrices.reduce((a, b) => a + b, 0) / validLivePrices.length)
       : CONFIG.ANCHOR_FALLBACK_PRICE;
 
-    // تکمیل داده‌های صرافی‌های تکمیلی بر مبنای نرخ واقعی بازار
     const allExchanges = compileFullExchangeList(rawResults, liveAnchorPrice);
 
-    // مشخص کردن بالاترین قیمت خرید (گرون‌تر می‌خره) و کمترین قیمت فروش (ارزون‌تر می‌فروشه)
     const active = allExchanges.filter(e => e.buyPrice > 0);
     const bestBuy = active.length > 0 ? [...active].sort((a, b) => b.buyPrice - a.buyPrice)[0] : null;
     const bestSell = active.length > 0 ? [...active].filter(e => e.sellPrice > 0).sort((a, b) => a.sellPrice - b.sellPrice)[0] : null;
@@ -154,6 +136,10 @@ export default {
 
     return response;
   },
+
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(sendRatesToTelegram(env));
+  }
 };
 
 /**
@@ -542,7 +528,6 @@ function compileFullExchangeList(liveResults, anchorPrice) {
     }
   });
 
-  // تعاریف صرافی‌های اصلی ایران شامل صرافی‌های استخراج شده از توکن‌باز
   const ALL_EXCHANGES_DEF = [
     { id: 'nobitex', name: 'نوبیتکس', enName: 'Nobitex', type: 'P2P', logoColor: '#4338ca', tradeUrl: 'https://nobitex.ir/pricing/', offsetBuy: 20, offsetSell: 450 },
     { id: 'wallex', name: 'والکس', enName: 'Wallex', type: 'P2P', logoColor: '#0284c7', tradeUrl: 'https://wallex.ir/markets/usdt-tmn', offsetBuy: -70, offsetSell: 10 },
@@ -554,7 +539,6 @@ function compileFullExchangeList(liveResults, anchorPrice) {
     { id: 'ramzinex', name: 'رمزینکس', enName: 'Ramzinex', type: 'P2P', logoColor: '#ea580c', tradeUrl: 'https://ramzinex.com/exchange/order-book/usdt-irr', offsetBuy: -900, offsetSell: -400 },
     { id: 'exir', name: 'اکسیر', enName: 'Exir', type: 'P2P', logoColor: '#2563eb', tradeUrl: 'https://exir.io/trading/usdt-irt', offsetBuy: -350, offsetSell: 350 },
     { id: 'sarmayex', name: 'سرمایکس', enName: 'Sarmayex', type: 'OTC', logoColor: '#d97706', tradeUrl: 'https://sarmayex.com/easy-exchange', offsetBuy: -1800, offsetSell: 2200 },
-    // صرافی‌های استخراج‌شده از توکن‌باز
     { id: 'iranexchange', name: 'ایران اکسچنج', enName: 'IranExchange', type: 'OTC', logoColor: '#059669', tradeUrl: 'https://iranexchange.com', offsetBuy: 320, offsetSell: 320 },
     { id: 'arzinja', name: 'ارزینجا', enName: 'Arzinja', type: 'OTC', logoColor: '#0d9488', tradeUrl: 'https://arzinja.info', offsetBuy: 220, offsetSell: 420 },
     { id: 'sarrafex', name: 'صرافکس', enName: 'Sarrafex', type: 'P2P', logoColor: '#4f46e5', tradeUrl: 'https://sarrafex.com', offsetBuy: -50, offsetSell: 60 },
@@ -563,7 +547,6 @@ function compileFullExchangeList(liveResults, anchorPrice) {
     { id: 'kifpoolme', name: 'کیف پول من', enName: 'Kifpool', type: 'P2P', logoColor: '#d97706', tradeUrl: 'https://kifpool.me', offsetBuy: -400, offsetSell: 600 },
     { id: 'twox', name: 'توایکس', enName: 'Twox', type: 'OTC', logoColor: '#7c3aed', tradeUrl: 'https://twox.ir', offsetBuy: -350, offsetSell: 750 },
     { id: 'bitwana', name: 'بیت وانا', enName: 'Bitwana', type: 'P2P', logoColor: '#0891b2', tradeUrl: 'https://bitwana.com', offsetBuy: -80, offsetSell: 150 },
-    // سایر صرافی‌های معتبر داخلی
     { id: 'arzpaya', name: 'ارزپایا', enName: 'ArzPaya', type: 'P2P', logoColor: '#4f46e5', tradeUrl: 'https://arzpaya.com', offsetBuy: -150, offsetSell: 120 },
     { id: 'raastin', name: 'راستین', enName: 'Raastin', type: 'P2P', logoColor: '#6366f1', tradeUrl: 'https://raastin.com', offsetBuy: -50, offsetSell: 190 },
     { id: 'rabex', name: 'رابکس', enName: 'Rabex', type: 'OTC', logoColor: '#9333ea', tradeUrl: 'https://rabex.ir', offsetBuy: 80, offsetSell: 310 },
@@ -594,4 +577,64 @@ function compileFullExchangeList(liveResults, anchorPrice) {
   });
 
   return all;
+}
+
+/**
+ * تابع ارسال خودکار نرخ‌ها به کانال تلگرام با قالب‌بندی HTML و عبارات کاملاً بی‌طرفانه
+ */
+async function sendRatesToTelegram(env) {
+  if (!env.TELEGRAM_BOT_TOKEN || !env.TELEGRAM_CHANNEL_ID) {
+    return { ok: false, error: "متغیرهای TELEGRAM_BOT_TOKEN یا TELEGRAM_CHANNEL_ID در کلودفلر ست نشده‌اند." };
+  }
+
+  try {
+    const rawResults = await fetchLiveExchanges();
+    const validLivePrices = rawResults.filter(r => r.status === 'online' && r.buyPrice > 100000).map(r => r.buyPrice);
+    const liveAnchorPrice = validLivePrices.length > 0 ? Math.round(validLivePrices.reduce((a, b) => a + b, 0) / validLivePrices.length) : CONFIG.ANCHOR_FALLBACK_PRICE;
+    const allExchanges = compileFullExchangeList(rawResults, liveAnchorPrice);
+
+    const active = allExchanges.filter(e => e.buyPrice > 0);
+    if (!active.length) return { ok: false, error: "هیچ قیمتی دریافت نشد." };
+
+    const bestBuy = [...active].sort((a, b) => b.buyPrice - a.buyPrice)[0];
+    const bestSell = [...active].filter(e => e.sellPrice > 0).sort((a, b) => a.sellPrice - b.sellPrice)[0];
+    const avg = Math.round(active.reduce((acc, curr) => acc + curr.buyPrice, 0) / active.length);
+
+    let exchangesListText = '';
+    allExchanges.forEach(ex => {
+      const buyStr = ex.buyPrice ? ex.buyPrice.toLocaleString('fa-IR') : '---';
+      const sellStr = ex.sellPrice ? ex.sellPrice.toLocaleString('fa-IR') : '---';
+      exchangesListText += `▫️ <b>${ex.name}</b>\n    خرید از شما: ${buyStr} | فروش به شما: ${sellStr}\n\n`;
+    });
+
+    const now = new Date();
+    const timeStr = now.toLocaleTimeString('fa-IR', { timeZone: 'Asia/Tehran', hour: '2-digit', minute: '2-digit' });
+
+    const message = `📊 <b>نرخ لحظه‌ای تتر (USDT) - ${timeStr}</b>\n\n` +
+      `🟢 <b>بالاترین پیشنهاد خرید (خرید صرافی از شما):</b>\n` +
+      `👈 <b>${bestBuy.name}</b> با نرخ <b>${bestBuy.buyPrice.toLocaleString('fa-IR')}</b> تومان\n\n` +
+      `🔵 <b>پایین‌ترین پیشنهاد فروش (فروش صرافی به شما):</b>\n` +
+      `👈 <b>${bestSell.name}</b> با نرخ <b>${bestSell.sellPrice.toLocaleString('fa-IR')}</b> تومان\n\n` +
+      `📈 <b>میانگین قیمت بازار:</b> ${avg.toLocaleString('fa-IR')} تومان\n` +
+      `───────────────────\n\n` +
+      `📋 <b>لیست قیمت صرافی‌ها:</b>\n\n` +
+      exchangesListText +
+      `📢 @SarafiSanj`;
+
+    const url = `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`;
+    
+    const tgRes = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: env.TELEGRAM_CHANNEL_ID,
+        text: message,
+        parse_mode: 'HTML'
+      })
+    });
+
+    return await tgRes.json();
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
 }
