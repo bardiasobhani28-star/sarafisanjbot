@@ -114,7 +114,7 @@ export default {
         onlineCount: active.length,
         anchorPrice: liveAnchorPrice,
         bestBuyExchange: bestBuy ? { id: bestBuy.id, name: bestBuy.name, price: bestBuy.buyPrice } : null,
-        bestSellExchange: bestSell ? { id: bestSell.id, name: bestSell.price } : null,
+        bestSellExchange: bestSell ? { id: bestSell.id, name: bestSell.name, price: bestSell.sellPrice } : null,
         avgBuyPrice: active.length ? Math.round(active.reduce((s, e) => s + e.buyPrice, 0) / active.length) : liveAnchorPrice,
         avgSellPrice: active.length ? Math.round(active.reduce((s, e) => s + e.sellPrice, 0) / active.length) : liveAnchorPrice + 200,
       },
@@ -456,7 +456,7 @@ function compileFullExchangeList(liveResults, anchorPrice) {
  */
 async function sendRatesToTelegram(env) {
   if (!env.TELEGRAM_BOT_TOKEN || !env.TELEGRAM_CHANNEL_ID) {
-    return { ok: false, error: "متغیرهای محیطی ست نشده‌اند." };
+    return { ok: false, error: "متغیرهای TELEGRAM_BOT_TOKEN یا TELEGRAM_CHANNEL_ID در کلودفلر ست نشده‌اند." };
   }
 
   try {
@@ -472,7 +472,6 @@ async function sendRatesToTelegram(env) {
     const bestSell = [...active].filter(e => e.sellPrice > 0).sort((a, b) => a.sellPrice - b.sellPrice)[0];
     const avg = Math.round(active.reduce((acc, curr) => acc + curr.buyPrice, 0) / active.length);
 
-    // ساخت لیست تمام صرافی‌ها پشت سر هم
     let exchangesListText = '';
     allExchanges.forEach(ex => {
       const buyStr = ex.buyPrice ? `${ex.buyPrice.toLocaleString('fa-IR')}` : 'نامشخص';
@@ -486,7 +485,7 @@ async function sendRatesToTelegram(env) {
       `📈 *میانگین بازار:* \`${avg.toLocaleString('fa-IR')} تومان\`\n\n` +
       `──────────────\n` +
       `📋 *نرخ تفکیکی تمام صرافی‌ها:*\n\n` +
-      exchangesListText + `\n` +
+      exchangesListText;
 
     const url = `https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/sendMessage`;
     
@@ -496,7 +495,7 @@ async function sendRatesToTelegram(env) {
       body: JSON.stringify({
         chat_id: env.TELEGRAM_CHANNEL_ID,
         text: message,
-        parse_mode: 'Markdown'
+        parse__mode: 'Markdown'
       })
     });
 
